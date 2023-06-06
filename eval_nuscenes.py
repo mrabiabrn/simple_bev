@@ -300,6 +300,8 @@ def main(
     assert(B % len(device_ids) == 0) # batch size must be divisible by number of gpus
 
     device = 'cuda:%d' % device_ids[0]
+
+    print('device_ids', device_ids)
     
     ## autogen a name
     model_name = "%s" % init_dir.split('/')[-1]
@@ -441,3 +443,4 @@ def main(
 if __name__ == '__main__':
     Fire(main)
 
+    
