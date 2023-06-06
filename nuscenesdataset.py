@@ -756,6 +756,8 @@ class NuscData(torch.utils.data.Dataset):
         rots = []
         trans = []
         intrins = []
+
+        #print('CAMS ', cams)
         for cam in cams:
             samp = self.nusc.get('sample_data', rec['data'][cam])
 
@@ -763,10 +765,21 @@ class NuscData(torch.utils.data.Dataset):
             img = Image.open(imgname)
             W, H = img.size
 
+            #print('GET IMG DATA ', img)
+
             sens = self.nusc.get('calibrated_sensor', samp['calibrated_sensor_token'])
             intrin = torch.Tensor(sens['camera_intrinsic'])
             rot = torch.Tensor(Quaternion(sens['rotation']).rotation_matrix)
             tran = torch.Tensor(sens['translation'])
+
+            """ 
+            print('SENS ', sens)
+            print('intrinsic ', intrin.shape)
+            print('rotation ', rot.shape)
+            print('trans ', tran.shape)
+
+            #exit()
+            """
 
             resize_dims, crop = self.sample_augmentation()
 
@@ -790,6 +803,9 @@ class NuscData(torch.utils.data.Dataset):
             rots.append(rot)
             trans.append(tran)
 
+        """ print('IMG ', torch.stack(imgs).shape) # num_cam X C X H X W
+        print('ROTS ', torch.stack(rots).shape) """
+
             
         return (torch.stack(imgs), torch.stack(rots), torch.stack(trans),torch.stack(intrins))
 
@@ -809,6 +825,11 @@ class NuscData(torch.utils.data.Dataset):
         return torch.Tensor(pts)
 
     def get_binimg(self, rec):
+        # THIS IS FOR CALCULATING IOU VALUE AT THE END
+        # IS IT EGO VEHICLE - CENTERED
+
+        #print('REC ################ ', type(rec['data']), rec['data'].keys())
+  
         egopose = self.nusc.get('ego_pose', self.nusc.get('sample_data', rec['data']['LIDAR_TOP'])['ego_pose_token'])
         trans = -np.array(egopose['translation'])
         rot = Quaternion(egopose['rotation']).inverse
@@ -837,11 +858,25 @@ class NuscData(torch.utils.data.Dataset):
                 (pts - self.bx[:2] + self.dx[:2]/2.) / self.dx[:2]
                 ).astype(np.int32)
             pts[:, [1, 0]] = pts[:, [0, 1]]
+            # fIlls İmg wİth gİven polygons 
             cv2.fillPoly(img, [pts], ii+1.0)
+
+
+        '''
+        print('IMG', np.max(img), np.min(img))
+        import matplotlib.pyplot as plt
+
+        plt.imshow(img, cmap='gray', vmin=0, vmax=255)
+        plt.show()
+        exit()
+        '''
 
         return torch.Tensor(img).unsqueeze(0), torch.Tensor(convert_egopose_to_matrix_numpy(egopose))
 
     def get_seg_bev(self, lrtlist_cam, vislist):
+        '''
+            CALCULATES GROUND TRUTH BEV USING LIDAR DATA ???
+        '''
         B, N, D = lrtlist_cam.shape
         assert(B==1)
 
@@ -870,6 +905,18 @@ class NuscData(torch.utils.data.Dataset):
             if vislist[n]==0:
                 # draw a black rectangle if it's invisible
                 cv2.fillPoly(val, [pts], 0.0)
+
+
+        #print('SEG BEV SHAPE ', seg.shape)
+        
+        """ import matplotlib.pyplot as plt
+        plt.imshow(seg) #.detach().cpu().numpy())
+        plt.show()
+
+
+        plt.imshow(val) #.detach().cpu().numpy())
+        plt.show() """
+
 
         return torch.Tensor(seg).unsqueeze(0), torch.Tensor(val).unsqueeze(0) # 1, Z, X
 
@@ -1019,9 +1066,11 @@ class VizData(NuscData):
         # print('index %d; cam_id' % index, cam_id)
         rec = self.ixes[index]
 
+        #print('GET SINGLE ITEM ', type(rec), rec.keys())
+
         imgs, rots, trans, intrins = self.get_image_data(rec, cams)
         lidar_data = self.get_lidar_data(rec, nsweeps=self.nsweeps)
-        binimg, egopose = self.get_binimg(rec)
+        binimg, egopose = self.get_binimg(rec) # HERE EGOPOSE IS THE 4X4 MATRIX!!
         
         if refcam_id is None:
             if self.is_train:
@@ -1059,6 +1108,7 @@ class VizData(NuscData):
         lrtlist_, boxlist_, vislist_, tidlist_ = self.get_lrtlist(rec)
         N_ = lrtlist_.shape[0]
 
+        # NOTE : lrtlist is for lidar data
         # import ipdb; ipdb.set_trace()
         if N_ > 0:
             
@@ -1176,6 +1226,7 @@ class VizData(NuscData):
         for index_t in self.indices[index]:
             # print('grabbing index %d' % index_t)
             imgs, rots, trans, intrins, lidar0_data, lidar0_extra, lidar_data, lidar_extra, lrtlist, vislist, tidlist, scorelist, seg_bev, valid_bev, center_bev, offset_bev, size_bev, ry_bev, ycoord_bev, radar_data, egopose = self.get_single_item(index_t, cams, refcam_id=refcam_id)
+            #print('NUSCENES ', imgs.shape) # NUM_CAM, C, H, W
 
             all_imgs.append(imgs)
             all_rots.append(rots)
@@ -1197,6 +1248,7 @@ class VizData(NuscData):
             all_egopose.append(egopose)
 
         all_imgs = torch.stack(all_imgs)
+        #print('all_imgs shape ', all_imgs.shape) # 1 num_cam c h w 
         all_rots = torch.stack(all_rots)
         all_trans = torch.stack(all_trans)
         all_intrins = torch.stack(all_intrins)
@@ -1250,6 +1302,8 @@ def compile_data(version, dataroot, data_aug_conf, centroid, bounds, res_3d, bsz
                            verbose=True)
     else:
         print('loading nuscenes...')
+        print('version ', version)
+        print('dataroot ', dataroot)
         nusc = NuScenes(version='v1.0-{}'.format(version),
                         dataroot=os.path.join(dataroot, version),
                         verbose=False)

@@ -60,6 +60,7 @@ class SimpleLoss(torch.nn.Module):
 
     def forward(self, ypred, ytgt, valid):
         loss = self.loss_fn(ypred, ytgt)
+        # TODO: valid
         loss = utils.basic.reduce_masked_mean(loss, valid)
         return loss
 
@@ -74,7 +75,8 @@ def balanced_mse_loss(pred, gt, valid=None):
     loss = (pos_loss + neg_loss)*0.5
     return loss
     
-def run_model(model, loss_fn, d, device='cuda:0', sw=None):
+count=0
+def run_model(model, loss_fn, d, device='cuda:0', sw=None, type='train'):
     metrics = {}
     total_loss = torch.tensor(0.0, requires_grad=True).to(device)
 
@@ -183,6 +185,7 @@ def run_model(model, loss_fn, d, device='cuda:0', sw=None):
             vox_util=vox_util,
             rad_occ_mem0=in_occ_mem0)
 
+
     ce_loss = loss_fn(seg_bev_e, seg_bev_g, valid_bev_g)
     center_loss = balanced_mse_loss(center_bev_e, center_bev_g)
     offset_loss = torch.abs(offset_bev_e-offset_bev_g).sum(dim=1, keepdim=True)
@@ -207,10 +210,56 @@ def run_model(model, loss_fn, d, device='cuda:0', sw=None):
     total_loss += center_uncertainty_loss
     total_loss += offset_uncertainty_loss
 
+
     seg_bev_e_round = torch.sigmoid(seg_bev_e).round()
     intersection = (seg_bev_e_round*seg_bev_g*valid_bev_g).sum(dim=[1,2,3])
     union = ((seg_bev_e_round+seg_bev_g)*valid_bev_g).clamp(0,1).sum(dim=[1,2,3])
     iou = (intersection/(1e-4 + union)).mean()
+
+    import matplotlib.pyplot as plt
+    from PIL import Image
+    global count
+    count += 1
+
+    if count == 1:
+            for i in range(rgb_camXs.shape[1]):
+                img = rgb_camXs[0][i]
+
+                print('IMGGGG SHAPEEEEE ' , img.shape)
+                plt.imshow(img.permute(1,2,0).detach().cpu().numpy())
+                plt.savefig(f"/home/mbarin/Desktop/vs-code/simple-bev/simple_bev/logs_carlabev/rgb_cam/{count}_{type}_cam{i}.png")
+            #plt.show()
+
+                plt.close()
+
+
+            plt.imshow(seg_bev_g[0].squeeze(0).detach().cpu().numpy())
+            plt.savefig(f"/home/mbarin/Desktop/vs-code/simple-bev/simple_bev/logs_carlabev/segmentation_gt/{count}_{type}.png")
+            #plt.show() 
+
+            plt.close()
+
+
+            plt.imshow(valid_bev_g[0].squeeze(0).detach().cpu().numpy())
+            plt.savefig(f"/home/mbarin/Desktop/vs-code/simple-bev/simple_bev/logs_carlabev/valid_gt/{count}_{type}.png")
+            #plt.show() 
+
+            plt.close()
+
+
+    if count % 10 == 0:
+
+        plt.imshow(seg_bev_e_round[0].squeeze(0).detach().cpu().numpy())
+        plt.savefig(f"/home/mbarin/Desktop/vs-code/simple-bev/simple_bev/logs_carlabev/segmentation_pred/{count}_{type}.png")
+        #plt.show()
+
+        plt.close()
+
+        
+
+
+
+
 
     metrics['ce_loss'] = ce_loss.item()
     metrics['center_loss'] = center_loss.item()
@@ -259,7 +308,7 @@ def main(
         weight_decay=1e-7,
         nworkers=12,
         # data/log/save/load directories
-        data_dir='../nuscenes/',
+        data_dir='./nuscenes/',
         log_dir='logs_nuscenes_bevseg',
         ckpt_dir='checkpoints/',
         keep_latest=1,
@@ -284,6 +333,12 @@ def main(
         # cuda
         device_ids=[0,1,2,3],
     ):
+
+    #print('batch sİze :', batch_size)  
+
+    # TODO: WHY ARE U NOT ASSIGNING THIS??
+    data_dir='./nuscenes/'
+    print('DATA DIR :', data_dir)    
 
     B = batch_size
     assert(B % len(device_ids) == 0) # batch size must be divisible by number of gpus
@@ -328,10 +383,11 @@ def main(
         'resize_lim': resize_lim,
         'final_dim': final_dim,
         'H': 900, 'W': 1600,
-        'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-                 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+        'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT' ,'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
         'ncams': ncams,
     }
+
+    print('DATA DIR :', data_dir)    
     train_dataloader, val_dataloader = nuscenesdataset.compile_data(
         dset,
         data_dir,
@@ -401,6 +457,7 @@ def main(
         center_pool_v = utils.misc.SimplePool(n_pool, version='np')
         offset_pool_v = utils.misc.SimplePool(n_pool, version='np')
 
+    sample = next(train_iterloader)
     # training loop
     while global_step < max_iters:
         global_step += 1
@@ -423,11 +480,11 @@ def main(
             else:
                 sw_t = None
 
-            try:
+            """ try:
                 sample = next(train_iterloader)
             except StopIteration:
                 train_iterloader = iter(train_dataloader)
-                sample = next(train_iterloader)
+                sample = next(train_iterloader) """
 
             read_time = time.time()-read_start_time
             iter_read_time += read_time
@@ -496,7 +553,7 @@ def main(
                 sample = next(val_iterloader)
                 
             with torch.no_grad():
-                total_loss, metrics = run_model(model, seg_loss_fn, sample, device, sw_v)
+                total_loss, metrics = run_model(model, seg_loss_fn, sample, device, sw_v, type='val')
 
             # update val running pools
             loss_pool_v.update([total_loss.item()])

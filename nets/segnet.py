@@ -321,6 +321,7 @@ class Segnet(nn.Module):
             # effb4
             self.encoder = Encoder_eff(feat2d_dim, version='b4')
 
+
         # BEV compressor
         if self.use_radar:
             if self.use_metaradar:
@@ -387,6 +388,9 @@ class Segnet(nn.Module):
         '''
         B, S, C, H, W = rgb_camXs.shape
         assert(C==3)
+
+
+        #print('pix t cams ', pix_T_cams.shape)
         # reshape tensors
         __p = lambda x: utils.basic.pack_seqdim(x, B)
         __u = lambda x: utils.basic.unpack_seqdim(x, B)
@@ -395,6 +399,7 @@ class Segnet(nn.Module):
         cam0_T_camXs_ = __p(cam0_T_camXs)
         camXs_T_cam0_ = utils.geom.safe_inverse(cam0_T_camXs_)
 
+
         # rgb encoder
         device = rgb_camXs_.device
         rgb_camXs_ = (rgb_camXs_ + 0.5 - self.mean.to(device)) / self.std.to(device)
@@ -402,17 +407,29 @@ class Segnet(nn.Module):
             B0, _, _, _ = rgb_camXs_.shape
             self.rgb_flip_index = np.random.choice([0,1], B0).astype(bool)
             rgb_camXs_[self.rgb_flip_index] = torch.flip(rgb_camXs_[self.rgb_flip_index], [-1])
+        
         feat_camXs_ = self.encoder(rgb_camXs_)
+
         if self.rand_flip:
             feat_camXs_[self.rgb_flip_index] = torch.flip(feat_camXs_[self.rgb_flip_index], [-1])
         _, C, Hf, Wf = feat_camXs_.shape
 
-        sy = Hf/float(H)
-        sx = Wf/float(W)
+        #print('feat_camXs SHAPE ' , feat_camXs_.shape)
+
+
+        sy = Hf/float(H)  # stride x 
+        sx = Wf/float(W)  # stride y
         Z, Y, X = self.Z, self.Y, self.X
+
+        """ print('feat_camXs sy sx  ' , sy, sx)
+        print('Z ', Z,Y,X) """
 
         # unproject image feature to 3d grid
         featpix_T_cams_ = utils.geom.scale_intrinsics(pix_T_cams_, sx, sy)
+        """ print('featpix T CAMS ', featpix_T_cams_.shape)
+
+        print('XYZ CAM A ' , self.xyz_camA.SHAPE)
+        """
         if self.xyz_camA is not None:
             xyz_camA = self.xyz_camA.to(feat_camXs_.device).repeat(B*S,1,1)
         else:

@@ -56,11 +56,11 @@ def fetch_optimizer(lr, wdecay, epsilon, num_steps, params):
 class SimpleLoss(torch.nn.Module):
     def __init__(self, pos_weight):
         super(SimpleLoss, self).__init__()
-        self.loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([pos_weight]), reduction='none')
+        self.loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([pos_weight])) #, reduction='none')
 
     def forward(self, ypred, ytgt, valid):
         loss = self.loss_fn(ypred, ytgt)
-        loss = utils.basic.reduce_masked_mean(loss, valid)
+        #loss = utils.basic.reduce_masked_mean(loss, valid)
         return loss
 
 def balanced_mse_loss(pred, gt, valid=None):

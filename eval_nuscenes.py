@@ -216,6 +216,14 @@ def run_model(model, loss_fn, d, device='cuda:0', sw=None):
             vox_util=vox_util,
             rad_occ_mem0=in_occ_mem0)
 
+    import matplotlib.pyplot as plt
+    plt.imshow(seg_bev_e[0].squeeze(0).detach().cpu().numpy())
+    plt.show()
+
+    plt.imshow(seg_bev_g[0].squeeze(0).detach().cpu().numpy())
+    plt.show()
+    
+
     ce_loss = loss_fn(seg_bev_e, seg_bev_g, valid_bev_g)
     center_loss = balanced_mse_loss(center_bev_e, center_bev_g)
     offset_loss = torch.abs(offset_bev_e-offset_bev_g).sum(dim=1, keepdim=True)
@@ -319,8 +327,7 @@ def main(
     
     data_aug_conf = {
         'final_dim': final_dim,
-        'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-                 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+        'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'], #,'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
         'ncams': ncams,
     }
     _, val_dataloader = nuscenesdataset.compile_data(

@@ -115,6 +115,13 @@ import matplotlib.pyplot as plt
 from utils.bev_utils import * 
 
 
+def gen_dx_bx(xbound, ybound, zbound):
+    dx = torch.Tensor([row[2] for row in [xbound, ybound, zbound]])
+    bx = torch.Tensor([row[0] + row[2]/2.0 for row in [xbound, ybound, zbound]])
+    nx = torch.LongTensor([int((row[1] - row[0]) / row[2]) for row in [xbound, ybound, zbound]])
+
+    return dx, bx, nx
+
 ########## SENSOR CONFIGS FOR TRANSFUSER DATA #############
 
 cam_config = {
@@ -303,12 +310,13 @@ class BEVDataset(Dataset):
         
         # zero out red channel
         topdown[0,:,:] = 0
+        topdown[2,:,:] = 0
 
         # take the upper part of the topdown view 
         _, H, W = topdown.shape
         """ print('H ', H)
         print('w ', W) """
-        topdown_t = topdown[:,:H//2,:] #[:,H//2:(H//2+self.Z),:]
+        topdown = topdown[:,50:H//2,150:350] #[:,H//2:(H//2+self.Z),:]
 
         #print('topdowb shape ' , topdown_t.shape)
 
@@ -317,7 +325,7 @@ class BEVDataset(Dataset):
 
         # TODO: transform topdown img based on model input img. 
         # resize, crop? 500x500 is too big to handle
-        topdown =  transforms.functional.center_crop(topdown_t,(self.X,self.Z))
+        #topdown =  transforms.functional.center_crop(topdown_t,(self.X,self.Z))
 
         # TODO: HOW DOES IOU IS COMPUTED, LOOK AT THE COLORS OF THE MODEL PREDS
         topdown = transforms.functional.rgb_to_grayscale(topdown).squeeze()
